@@ -31,29 +31,35 @@ assert_running() {
   printf '%s=%s\n' "$phase" "$pid" >> "$ARTIFACT_DIR/processes.txt"
 }
 
-capture_screen() {
+capture_phase() {
   local name="$1"
   adb exec-out screencap -p > "$ARTIFACT_DIR/${name}.png"
+  adb shell dumpsys window > "$ARTIFACT_DIR/window-${name}.txt"
 }
 
 adb logcat -c
 adb install -r "$APK"
+
+# Do not let the emulator's first-use immersive-mode education overlay cover
+# the screenshots. Real devices may show this Android-owned message once.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
+
 adb shell am force-stop "$PACKAGE"
 adb shell am start -W -n "$ACTIVITY" | tee "$ARTIFACT_DIR/am-start.txt"
 sleep 5
 
 assert_running initial
-capture_screen initial
+capture_phase initial
 
 # Lock the emulator into landscape and verify the app remains alive.
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 sleep 4
 assert_running landscape
-capture_screen landscape
+capture_phase landscape
 
 # Return to the natural orientation and verify it survives again.
 adb shell settings put system user_rotation 0
 sleep 4
 assert_running returned
-capture_screen returned
+capture_phase returned
