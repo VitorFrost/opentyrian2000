@@ -9,6 +9,13 @@ tyrian.sav
 *~
 *.swp
 
+# Android local/build state
+/android-project/local.properties
+/android-project/.gradle/
+/android-project/.idea/
+/android-project/build/
+/android-project/app/build/
+
 # Make build output
 /build/
 /release_esp32/*.fw
