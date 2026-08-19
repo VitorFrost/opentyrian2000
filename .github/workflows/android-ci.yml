@@ -1,0 +1,119 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - android-modernization
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Download Tyrian 2000 freeware data
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DATA_URL='https://www.camanis.net/tyrian/tyrian2000.zip'
+          curl --fail --location --retry 4 --retry-delay 3 "$DATA_URL" -o /tmp/tyrian2000.zip
+
+          # The canonical Camanis archive linked by OpenTyrian2000 is 5,051,363 bytes.
+          test "$(stat -c '%s' /tmp/tyrian2000.zip)" = '5051363'
+
+          rm -rf /tmp/tyrian2000-unpacked data
+          mkdir -p /tmp/tyrian2000-unpacked data
+          unzip -q /tmp/tyrian2000.zip -d /tmp/tyrian2000-unpacked
+
+          # Locate the actual DOS data directory regardless of archive nesting and
+          # normalize filenames to lowercase for the case-sensitive Linux runner.
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          unpacked = Path('/tmp/tyrian2000-unpacked')
+          candidates = [p for p in unpacked.rglob('*') if p.is_file() and p.name.lower() == 'tyrian1.lvl']
+          if not candidates:
+              raise SystemExit('tyrian1.lvl not found in Tyrian 2000 archive')
+
+          source = candidates[0].parent
+          dest = Path('data')
+          for item in source.iterdir():
+              if item.is_file():
+                  shutil.copy2(item, dest / item.name.lower())
+
+          required = [
+              'tyrian1.lvl', 'tyrian2.lvl', 'tyrian3.lvl', 'tyrian4.lvl', 'tyrian5.lvl',
+              'levels1.dat', 'levels5.dat', 'cubetxt1.dat', 'cubetxt5.dat',
+              'tyrian.hdt', 'palette.dat', 'music.mus', 'tyrian.snd'
+          ]
+          missing = [name for name in required if not (dest / name).is_file()]
+          if missing:
+              raise SystemExit(f'Missing required Tyrian 2000 data files: {missing}')
+
+          print(f'Staged {sum(1 for p in dest.iterdir() if p.is_file())} Tyrian 2000 files from {source}')
+          PY
+
+      - name: Remove machine-specific Android SDK path
+        shell: bash
+        run: rm -f android-project/local.properties
+
+      - name: Build debug APK
+        working-directory: android-project
+        shell: bash
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          set -euxo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace clean assembleDebug
+
+      - name: Verify APK contents
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK='android-project/app/build/outputs/apk/debug/app-debug.apk'
+          test -f "$APK"
+          unzip -l "$APK" > /tmp/apk-files.txt
+          grep -q 'assets/data/tyrian1.lvl' /tmp/apk-files.txt
+          grep -q 'assets/data/tyrian5.lvl' /tmp/apk-files.txt
+          grep -q 'lib/arm64-v8a/libmain.so' /tmp/apk-files.txt
+          sha256sum "$APK"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentyrian2000-android-debug
+          path: android-project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
