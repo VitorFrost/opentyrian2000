@@ -129,6 +129,9 @@ jobs:
     timeout-minutes: 25
 
     steps:
+      - name: Checkout CI scripts
+        uses: actions/checkout@v4
+
       - name: Download built APK
         uses: actions/download-artifact@v4
         with:
@@ -150,51 +153,8 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -eux
-            PACKAGE='org.libsdl.opentyrian'
-            ACTIVITY='org.libsdl.opentyrian/.OpentyrianActivity'
-            mkdir -p runtime-artifacts
-
-            collect_diagnostics() {
-              adb logcat -d > runtime-artifacts/logcat.txt || true
-              adb shell dumpsys activity activities > runtime-artifacts/activity.txt || true
-              adb shell dumpsys window > runtime-artifacts/window.txt || true
-            }
-            trap collect_diagnostics EXIT
-
-            adb logcat -c
-            adb install -r "$GITHUB_WORKSPACE/apk/app-debug.apk"
-            adb shell am force-stop "$PACKAGE"
-            adb shell am start -W -n "$ACTIVITY"
-            sleep 5
-
-            PID_INITIAL="$(adb shell pidof -s "$PACKAGE" | tr -d '\r')"
-            test -n "$PID_INITIAL"
-            adb shell dumpsys activity activities | grep -q "$PACKAGE"
-            adb exec-out screencap -p > runtime-artifacts/initial.png
-
-            # Lock the emulator into landscape and verify the app remains alive.
-            adb shell settings put system accelerometer_rotation 0
-            adb shell settings put system user_rotation 1
-            sleep 4
-            PID_LANDSCAPE="$(adb shell pidof -s "$PACKAGE" | tr -d '\r')"
-            test -n "$PID_LANDSCAPE"
-            adb shell dumpsys activity activities | grep -q "$PACKAGE"
-            adb exec-out screencap -p > runtime-artifacts/landscape.png
-
-            # Return to the natural orientation and verify it survives again.
-            adb shell settings put system user_rotation 0
-            sleep 4
-            PID_RETURN="$(adb shell pidof -s "$PACKAGE" | tr -d '\r')"
-            test -n "$PID_RETURN"
-            adb shell dumpsys activity activities | grep -q "$PACKAGE"
-            adb exec-out screencap -p > runtime-artifacts/returned.png
-
-            printf 'initial=%s\nlandscape=%s\nreturned=%s\n' \
-              "$PID_INITIAL" "$PID_LANDSCAPE" "$PID_RETURN" \
-              > runtime-artifacts/processes.txt
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
+          script: bash "$GITHUB_WORKSPACE/ci/android-runtime-smoke.sh"
 
       - name: Upload emulator diagnostics
         if: always()
