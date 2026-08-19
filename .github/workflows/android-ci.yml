@@ -83,9 +83,12 @@ jobs:
           print(f'Staged {sum(1 for p in dest.iterdir() if p.is_file())} Tyrian 2000 files from {source}')
           PY
 
-      - name: Remove machine-specific Android SDK path
+      - name: Purge checked-in Android build state
         shell: bash
-        run: rm -f android-project/local.properties
+        run: |
+          set -euxo pipefail
+          rm -f android-project/local.properties
+          rm -rf android-project/.gradle android-project/build android-project/app/build
 
       - name: Build debug APK
         working-directory: android-project
@@ -96,7 +99,7 @@ jobs:
         run: |
           set -euxo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace clean assembleDebug
+          ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Verify APK contents
         shell: bash
