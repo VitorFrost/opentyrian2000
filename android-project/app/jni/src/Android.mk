@@ -25,6 +25,10 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := main
 
+# Android always builds this target against SDL3. Define the feature at the
+# compiler level so headers do not depend on opentyr.h being included first.
+LOCAL_CFLAGS += -DWITH_SDL3=1
+
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/$(SDL_PATH)/include
 
 # Add your application source files here...
