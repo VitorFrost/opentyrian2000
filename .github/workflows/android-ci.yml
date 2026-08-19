@@ -152,7 +152,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euxo pipefail
+            set -eux
             PACKAGE='org.libsdl.opentyrian'
             ACTIVITY='org.libsdl.opentyrian/.OpentyrianActivity'
             mkdir -p runtime-artifacts
