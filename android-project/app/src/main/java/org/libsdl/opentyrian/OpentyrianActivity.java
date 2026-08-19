@@ -10,7 +10,6 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
-import android.view.WindowManager;
 
 import org.libsdl.app.SDLActivity;
 
@@ -38,54 +37,42 @@ public class OpentyrianActivity extends SDLActivity
             Log.e(TAG, "Failed to install Tyrian data files", e);
         }
         super.onCreate(savedInstanceState);
-        applyImmersiveMode();
+        hideSystemBars();
 
-        // SDL can change its window style shortly after the native thread starts.
-        // Re-assert mobile fullscreen once the initial layout has settled.
-        getWindow().getDecorView().postDelayed(this::applyImmersiveMode, 500);
+        // SDL may update its window style shortly after its native thread starts.
+        // Hiding insets again is intentionally non-invasive: unlike changing the
+        // decor-fit/cutout geometry it does not tear down SDL's SurfaceView.
+        getWindow().getDecorView().postDelayed(this::hideSystemBars, 500);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        applyImmersiveMode();
+        hideSystemBars();
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            applyImmersiveMode();
+            hideSystemBars();
         }
     }
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        applyImmersiveMode();
+        hideSystemBars();
     }
 
     @SuppressWarnings("deprecation")
-    private void applyImmersiveMode() {
+    private void hideSystemBars() {
         Window window = getWindow();
         if (window == null) {
             return;
         }
 
-        window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
-        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-        if (Build.VERSION.SDK_INT >= 28) {
-            WindowManager.LayoutParams attributes = window.getAttributes();
-            attributes.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
-            window.setAttributes(attributes);
-        }
-
         if (Build.VERSION.SDK_INT >= 30) {
-            // Let SDL use the complete physical display and make the system bars
-            // transient: an edge swipe can reveal them without resizing gameplay.
-            window.setDecorFitsSystemWindows(false);
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
                 controller.setSystemBarsBehavior(
@@ -93,8 +80,7 @@ public class OpentyrianActivity extends SDLActivity
                 controller.hide(WindowInsets.Type.systemBars());
             }
         } else {
-            View decor = window.getDecorView();
-            decor.setSystemUiVisibility(
+            window.getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
