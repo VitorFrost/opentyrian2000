@@ -19,7 +19,7 @@
 #ifndef FILE_H
 #define FILE_H
 
-#ifdef WITH_SDL3
+#if defined(WITH_SDL3) || defined(ANDROID) || defined(__ANDROID__)
 #include <SDL3/SDL.h>
 #else
 #ifdef WITH_SDL
