@@ -111,6 +111,7 @@ jobs:
           grep -q 'assets/data/tyrian1.lvl' /tmp/apk-files.txt
           grep -q 'assets/data/tyrian5.lvl' /tmp/apk-files.txt
           grep -q 'lib/arm64-v8a/libmain.so' /tmp/apk-files.txt
+          grep -q 'lib/x86_64/libmain.so' /tmp/apk-files.txt
           sha256sum "$APK"
 
       - name: Upload debug APK
@@ -119,4 +120,87 @@ jobs:
           name: opentyrian2000-android-debug
           path: android-project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
+
+  emulator-smoke:
+    name: Android emulator smoke test
+    needs: build-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: opentyrian2000-android-debug
+          path: apk
+
+      - name: Enable KVM access
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch, rotate, and verify app survives
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -euxo pipefail
+            PACKAGE='org.libsdl.opentyrian'
+            ACTIVITY='org.libsdl.opentyrian/.OpentyrianActivity'
+            mkdir -p runtime-artifacts
+
+            collect_diagnostics() {
+              adb logcat -d > runtime-artifacts/logcat.txt || true
+              adb shell dumpsys activity activities > runtime-artifacts/activity.txt || true
+              adb shell dumpsys window > runtime-artifacts/window.txt || true
+            }
+            trap collect_diagnostics EXIT
+
+            adb logcat -c
+            adb install -r "$GITHUB_WORKSPACE/apk/app-debug.apk"
+            adb shell am force-stop "$PACKAGE"
+            adb shell am start -W -n "$ACTIVITY"
+            sleep 5
+
+            PID_INITIAL="$(adb shell pidof -s "$PACKAGE" | tr -d '\r')"
+            test -n "$PID_INITIAL"
+            adb shell dumpsys activity activities | grep -q "$PACKAGE"
+            adb exec-out screencap -p > runtime-artifacts/initial.png
+
+            # Lock the emulator into landscape and verify the app remains alive.
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            sleep 4
+            PID_LANDSCAPE="$(adb shell pidof -s "$PACKAGE" | tr -d '\r')"
+            test -n "$PID_LANDSCAPE"
+            adb shell dumpsys activity activities | grep -q "$PACKAGE"
+            adb exec-out screencap -p > runtime-artifacts/landscape.png
+
+            # Return to the natural orientation and verify it survives again.
+            adb shell settings put system user_rotation 0
+            sleep 4
+            PID_RETURN="$(adb shell pidof -s "$PACKAGE" | tr -d '\r')"
+            test -n "$PID_RETURN"
+            adb shell dumpsys activity activities | grep -q "$PACKAGE"
+            adb exec-out screencap -p > runtime-artifacts/returned.png
+
+            printf 'initial=%s\nlandscape=%s\nreturned=%s\n' \
+              "$PID_INITIAL" "$PID_LANDSCAPE" "$PID_RETURN" \
+              > runtime-artifacts/processes.txt
+
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-diagnostics
+          path: runtime-artifacts
+          if-no-files-found: warn
           retention-days: 14
