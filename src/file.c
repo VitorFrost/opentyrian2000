@@ -152,9 +152,23 @@ const char * data_dir(void)
         ".",
     };
 #elif defined(ANDROID) || defined(__ANDROID__)
+    /*
+     * OpentyrianActivity installs the APK's assets/data directory into
+     * Context.getFilesDir()/data on first launch.  The old Android port only
+     * searched external storage, so modern scoped-storage builds could package
+     * the data successfully and still fail to find it at runtime.
+     */
+    static char android_data_dir[4096];
+    const char *const android_internal_dir = SDL_GetAndroidInternalStoragePath();
+
+    android_data_dir[0] = '\0';
+    if (android_internal_dir != NULL && android_internal_dir[0] != '\0')
+        snprintf(android_data_dir, sizeof(android_data_dir), "%s/data", android_internal_dir);
+
     const char *const dirs[] =
     {
         custom_data_dir,
+        android_data_dir[0] != '\0' ? android_data_dir : NULL,
         "/sdcard/Android/tyriandata",
         ".",
     };
