@@ -39,7 +39,11 @@ const char *const scaling_mode_names[ScalingMode_MAX] = {
 int fullscreen_display;
 #if defined(WITH_SDL3_ESP)
 ScalingMode scaling_mode = SCALE_CENTER;
-#elif defined(IOS) || defined(ANDROID) || defined(__ANDROID__) || defined(__3DS__) || defined(PSP)
+#elif defined(ANDROID) || defined(__ANDROID__)
+/* 320x200 is 8:5. On wide mobile displays this preserves square pixels while
+ * leaving predictable side gutters that can later host touch controls. */
+ScalingMode scaling_mode = SCALE_ASPECT_8_5;
+#elif defined(IOS) || defined(__3DS__) || defined(PSP)
 ScalingMode scaling_mode = SCALE_ASPECT_4_3;
 #else
 ScalingMode scaling_mode = SCALE_INTEGER;
@@ -210,7 +214,7 @@ bool init_scaler( unsigned int new_scaler, bool fullscreen )
     bpp = surface->format->BitsPerPixel;
     
     printf("initialized video: %dx%dx%d %s\n", w, h, bpp, fullscreen ? "fullscreen" : "windowed");
-
+    
     scaler = new_scaler;
     main_window_tex_format = malloc(sizeof(*main_window_tex_format));
     memcpy(main_window_tex_format, surface->format, sizeof(*main_window_tex_format));
@@ -227,7 +231,7 @@ bool init_scaler( unsigned int new_scaler, bool fullscreen )
         scaler_function = NULL;
         break;
     }
-    
+
     if (scaler_function == NULL)
     {
         assert(false);
@@ -804,4 +808,3 @@ void scaleWindowDistanceToScreen(Sint32 *const inout_x, Sint32 *const inout_y)
 	*inout_x = (2 * *inout_x + 1) * VGAScreen->w / (2 * last_output_rect.w);
 	*inout_y = (2 * *inout_y + 1) * VGAScreen->h / (2 * last_output_rect.h);
 }
-
